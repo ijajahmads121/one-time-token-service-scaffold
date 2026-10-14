@@ -28,8 +28,21 @@ const keyFor = (id) => "token:" + id;
  * @returns {Promise<string>}   The token id to hand to the user.
  */
 export async function issueToken(payload, ttlSeconds) {
-  // TODO: implement
-  throw new Error("issueToken not implemented");
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0) {
+    throw new TypeError("ttlSeconds must be a positive integer");
+  }
+
+  const value = JSON.stringify(payload);
+  if (value === undefined) {
+    throw new TypeError("payload must be JSON-serialisable");
+  }
+
+  // NX is defensive; retry if the practically impossible id collision occurs.
+  while (true) {
+    const tokenId = crypto.randomBytes(16).toString("hex");
+    const stored = await redis.set(keyFor(tokenId), value, "EX", ttlSeconds, "NX");
+    if (stored === "OK") return tokenId;
+  }
 }
 
 /**
@@ -47,8 +60,9 @@ export async function issueToken(payload, ttlSeconds) {
  * @returns {Promise<{ ok: true, payload: object } | { ok: false, reason: string }>}
  */
 export async function consumeToken(tokenId) {
-  // TODO: implement
-  throw new Error("consumeToken not implemented");
+  const value = await redis.getdel(keyFor(tokenId));
+  if (value === null) return { ok: false, reason: "invalid" };
+  return { ok: true, payload: JSON.parse(value) };
 }
 
 // Allow other files to close the connection cleanly (used by test.js).
